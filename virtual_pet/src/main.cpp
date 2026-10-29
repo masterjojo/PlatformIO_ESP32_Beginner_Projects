@@ -37,6 +37,11 @@ int petPositionX, petPositionY;
 enum Screen { TITLE, PET };
 Screen currentScreen = TITLE;
 
+int petDirection = 1;                         // direction the pet is moving; 1 is right and -1 is left
+const int PET_STEP_SIZE = 5;                  // how many pixels the pet moves each time
+const unsigned long PET_STEP_INTERVAL = 550;  // how long the pet waits between steps; number is milliseconds
+unsigned long lastPetStepTime = 0;            // remembers the moment the pet took a step last; it ensures that enough time has passed before the pet moves again
+
 //function centers the text in the middle of the screen
 void printCentered(const char* text, int y, int textSize, uint16_t color) {
   display.setTextSize(textSize);
@@ -109,6 +114,17 @@ void enterPetScreen() {
   drawPet(petPositionX, petPositionY);
 }
 
+void updatePetMovement() {
+  if (millis() - lastPetStepTime < PET_STEP_INTERVAL) return;   // the timer; millis is how long the board has been running
+  lastPetStepTime = millis();
+  int previousX = petPositionX;
+  petPositionX += petDirection * PET_STEP_SIZE;   // saves the old position and move the pet position X by one step
+  if (petPositionX < 2) { petPositionX = 2; petDirection = 1; }
+  int maxRightPosition = display.width() - PET_WIDTH - 2;
+  if (petPositionX > maxRightPosition) { petPositionX = maxRightPosition; petDirection = -1; }
+  display.fillRect(previousX, petPositionY, PET_WIDTH, PET_HEIGHT, PET_SCREEN_COLOR); // to make the pet look like its walking, we paint a lavendar rectangle over where the pet was to erase it
+  drawPet(petPositionX, petPositionY); //then we draw it in its new position
+}
 
 void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
@@ -135,5 +151,9 @@ void loop() {
     playBeep();
     enterPetScreen();
     currentScreen = PET;
+  }
+
+  if (currentScreen == PET) {
+    updatePetMovement();
   }
 }
