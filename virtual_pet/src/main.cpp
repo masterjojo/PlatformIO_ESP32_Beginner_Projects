@@ -34,13 +34,20 @@ enum ButtonPress { NO_BUTTON, SCROLL_BUTTON, SELECT_BUTTON, BACK_BUTTON };
 const int PET_WIDTH = 40, PET_HEIGHT = 40;
 int petPositionX, petPositionY;
 
-enum Screen { TITLE, PET };
+enum Screen { TITLE, PET, MENU, STATUS_SCREEN };
 Screen currentScreen = TITLE;
 
 int petDirection = 1;                         // direction the pet is moving; 1 is right and -1 is left
 const int PET_STEP_SIZE = 5;                  // how many pixels the pet moves each time
 const unsigned long PET_STEP_INTERVAL = 550;  // how long the pet waits between steps; number is milliseconds
 unsigned long lastPetStepTime = 0;            // remembers the moment the pet took a step last; it ensures that enough time has passed before the pet moves again
+
+#define BAR_EMPTY_COLOR     0xEF7D
+#define BAR_OUTLINE_COLOR   0xC618
+#define HUNGER_BAR_COLOR    0xFDB88
+#define FUN_BAR_COLOR       0x9FD3
+#define HAPPY_BAR_COLOR     0xAE3F
+
 
 //function centers the text in the middle of the screen
 void printCentered(const char* text, int y, int textSize, uint16_t color) {
@@ -114,6 +121,7 @@ void enterPetScreen() {
   drawPet(petPositionX, petPositionY);
 }
 
+//moves the pet on the screen
 void updatePetMovement() {
   if (millis() - lastPetStepTime < PET_STEP_INTERVAL) return;   // the timer; millis is how long the board has been running
   lastPetStepTime = millis();
@@ -124,6 +132,64 @@ void updatePetMovement() {
   if (petPositionX > maxRightPosition) { petPositionX = maxRightPosition; petDirection = -1; }
   display.fillRect(previousX, petPositionY, PET_WIDTH, PET_HEIGHT, PET_SCREEN_COLOR); // to make the pet look like its walking, we paint a lavendar rectangle over where the pet was to erase it
   drawPet(petPositionX, petPositionY); //then we draw it in its new position
+}
+
+const char* menuItems[3] = { "Status", "Food", "Play" };  // holds the menu choices
+int selectedMenuItem = 0;                                 // keeps track of which menu item is being highlighted
+#define MENU_SCREEN_COLOR 0xD65D
+
+//drawing one of the options on our menu
+void drawMenuItem(int itemIndex) {
+  int rowTop = 52 + itemIndex * 32;
+  bool isSelected = (itemIndex == selectedMenuItem);
+  display.fillRect(6, rowTop - 3, display.width() - 12, 28, MENU_SCREEN_COLOR);
+  if (isSelected) display.fillRoundRect(10, rowTop, display.width() - 20, 22, 10, ST77XX_WHITE);
+  const char* label = menuItems[itemIndex];
+  display.setTextSize(1);
+  display.setTextColor(TEXT_COLOR);
+  display.setCursor((display.width() - (int)strlen(label) * 6) /2, rowTop + 7);
+  display.print(label);
+}
+
+//draws the entire menu
+void drawMenuScreen(){
+  display.fillScreen(MENU_SCREEN_COLOR);
+  printCentered("MENU", 28, 2, HEADER_COLOR);
+  for (int i = 0; i < 3; i++)
+    drawMenuItem(i);
+}
+
+int hungerLevel = 70, funLevel = 70, happinessLevel = 70;   // the 3 statuses available in the Status page
+unsigned long lastStatDecreaseTime = 0;                     // remembers the last time the stats dropped so we can keep track of how much time has passed by
+const unsigned long STAT_DECREASE_INTERVAL = 15000;         //represents how often the stats drop; in this case it's every 15 seconds
+
+//function to make sure each status stays between 0 and 100
+int keepBetween0And100(int value) {
+  if (value < 0) return 0;
+  if (value > 100) return 100;
+  return value;
+}
+
+void drawStaBar(int y, const char* label, int value, uint16_t barColor) {
+  display.setTextSize(1);
+  display.setTextColor(TEXT_COLOR);
+  display.setCursor(12,y);
+  display.print(label);
+  int barX = 12, barY = y + 12, barWidth = display.width() - 24, barHeight = 14, cornerRadius = 7;
+  display.fillRoundRect(barX, barY, barWidth, barHeight, cornerRadius, BAR_EMPTY_COLOR);
+  int filledWidth = (value * barWidth) / 100;
+  if (value > 0 && filledWidth < 2 * cornerRadius) filledWidth = 2 * cornerRadius;
+  if (filledWidth > barWidth) filledWidth = barWidth;
+  if (value > 0) display.fillRoundRect(barX, barY, filledWidth, barHeight, cornerRadius, barColor);
+  display.drawRoundRect(barX, barY, barWidth, barHeight, cornerRadius, BAR_OUTLINE_COLOR);
+}
+
+void drawStatusScreen() {
+  display.fillScreen(BACKGROUND_COLOR);
+  printCentered("STATUS", 26, 2, HEADER_COLOR);
+  drawStaBar(54, "HUNGER", hungerLevel, HUNGER_BAR_COLOR);
+  drawStaBar(90, "FUN", funLevel, FUN_BAR_COLOR);
+  drawStaBar(126, "HAPPY", happinessLevel, HAPPY_BAR_COLOR);
 }
 
 void setup() {
@@ -147,13 +213,60 @@ void setup() {
  
 void loop() {
   ButtonPress pressedButton = getPressedButton();
-  if (currentScreen == TITLE && pressedButton != NO_BUTTON) {
-    playBeep();
-    enterPetScreen();
-    currentScreen = PET;
+
+  if (currentScreen == PET && millis() - lastStatDecreaseTime > STAT_DECREASE_INTERVAL) {
+    lastStatDecreaseTime = millis();
+    hungerLevel = keepBetween0And100(hungerLevel - 1);
+    funLevel = keepBetween0And100(funLevel - 1);
+    happinessLevel = keepBetween0And100(happinessLevel - 1);
   }
 
-  if (currentScreen == PET) {
-    updatePetMovement();
+  switch (currentScreen) {
+    case TITLE:
+      if (pressedButton != NO_BUTTON) {
+        playBeep();
+        enterPetScreen();
+        currentScreen = PET;
+      }
+      break;
+    
+    case PET:
+      updatePetMovement();
+      if (pressedButton == SCROLL_BUTTON) {
+        playBeep();
+        drawMenuScreen();
+        currentScreen = MENU;
+      }
+      break;
+    
+    case MENU:
+      if (pressedButton == SCROLL_BUTTON) {
+        playBeep();
+        int previousMenuItem = selectedMenuItem;
+        if (selectedMenuItem == 2) 
+          selectedMenuItem = 0;
+        else selectedMenuItem = selectedMenuItem + 1;
+        drawMenuItem(previousMenuItem);
+        drawMenuItem(selectedMenuItem);
+      } else if (pressedButton == SELECT_BUTTON) {
+        if (selectedMenuItem == 0) {
+          playBeep();
+          drawStatusScreen();
+          currentScreen = STATUS_SCREEN;
+        }
+      } else if (pressedButton == BACK_BUTTON) {
+          playBeep();
+          enterPetScreen();
+          currentScreen = PET;
+      }
+      break;
+
+    case STATUS_SCREEN:
+    if (pressedButton == BACK_BUTTON) {
+      playBeep();
+      drawMenuScreen();
+      currentScreen = MENU;
+    }
   }
+
 }
