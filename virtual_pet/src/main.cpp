@@ -34,7 +34,7 @@ enum ButtonPress { NO_BUTTON, SCROLL_BUTTON, SELECT_BUTTON, BACK_BUTTON };
 const int PET_WIDTH = 40, PET_HEIGHT = 40;
 int petPositionX, petPositionY;
 
-enum Screen { TITLE, PET, MENU, STATUS_SCREEN };
+enum Screen { TITLE, PET, MENU, STATUS_SCREEN, FOOD, PLAY };
 Screen currentScreen = TITLE;
 
 int petDirection = 1;                         // direction the pet is moving; 1 is right and -1 is left
@@ -65,10 +65,12 @@ void playBeep() { tone(BUZZER_PIN, 1200, 40); }
 // music for when the device powers on
 // the loop plays through all fives notes and waits for it to finish
 void playStartupJingle() {
-  int noteFrequencies[] = { 659, 784, 880, 988, 1047 }; // list of pitches
-  int noteDurations[]   = { 150, 150, 150, 150, 300 };  // how long each pitch plays for
-  for (int i = 0; i < 5; i++) {
-    tone(BUZZER_PIN, noteFrequencies[i], noteDurations[i]); delay(noteDurations[i] + 30);
+  //int noteFrequencies[] = { 659, 784, 880, 988, 1047 }; // list of pitches
+  //int noteDurations[]   = { 150, 150, 150, 150, 300 };  // how long each pitch plays for
+  int noteFrequencies[] = { 659, 554, 554, 494, 554, 659 }; // list of pitches
+  int noteDurations[]   = { 150, 150, 300, 150, 150, 300 };  // how long each pitch plays for
+  for (int i = 0; i < 6; i++) {
+    tone(BUZZER_PIN, noteFrequencies[i], noteDurations[i]); // delay(noteDurations[i] + 30);
   }
   noTone(BUZZER_PIN); // this function makes sure that the buzzer goes quiet when it's done
 }
@@ -161,7 +163,7 @@ void drawMenuScreen(){
 
 int hungerLevel = 70, funLevel = 70, happinessLevel = 70;   // the 3 statuses available in the Status page
 unsigned long lastStatDecreaseTime = 0;                     // remembers the last time the stats dropped so we can keep track of how much time has passed by
-const unsigned long STAT_DECREASE_INTERVAL = 15000;         //represents how often the stats drop; in this case it's every 15 seconds
+const unsigned long STAT_DECREASE_INTERVAL = 5000;         //represents how often the stats drop; in this case it's every 5 seconds
 
 //function to make sure each status stays between 0 and 100
 int keepBetween0And100(int value) {
@@ -190,6 +192,82 @@ void drawStatusScreen() {
   drawStaBar(54, "HUNGER", hungerLevel, HUNGER_BAR_COLOR);
   drawStaBar(90, "FUN", funLevel, FUN_BAR_COLOR);
   drawStaBar(126, "HAPPY", happinessLevel, HAPPY_BAR_COLOR);
+}
+
+const int       FOOD_COUNT = 2;  //amount of food options that we have; in this case it's 2
+const uint16_t* foodImages[FOOD_COUNT] = { epd_bitmap_virtual_pet_donut, epd_bitmap_virtual_pet_pizza };
+const char*     foodNames[FOOD_COUNT] = { "Donut", "Pizza"};  //names that we're going to display under each image
+int selectedFood = 0; // keeps track of which food is being shown on screen; with 0 being the first item and 1 being the second item
+
+void drawFoodItem() {
+  display.fillRect(0, 48, display.width(), 72, BACKGROUND_COLOR);
+  int imageX = (display.width() - 40) / 2;
+  display.drawRGBBitmap(imageX, 54, foodImages[selectedFood], 40, 40);
+  printCentered(foodNames[selectedFood], 100, 2, TEXT_COLOR);
+}
+
+// crea
+void drawFoodScreen() {
+  display.fillScreen(BACKGROUND_COLOR);
+  printCentered("FOOD", 26, 2, HEADER_COLOR);
+  drawFoodItem();
+}
+
+const int foodHungerGain[FOOD_COUNT]    = { 8, 25 };
+const int foodHappinessGain[FOOD_COUNT] = { 20, 5 };
+
+void playSelectSound() {
+  tone(BUZZER_PIN, 988, 70); delay(80);
+  tone(BUZZER_PIN, 1319, 110); delay(120);
+  noTone(BUZZER_PIN);
+}
+
+void playHappySound() {
+  int noteFrequencies[] = { 784, 988, 1319};
+  for (int i = 0; i < 3; i++) { tone(BUZZER_PIN, noteFrequencies[i], 130); delay(150); }
+  noTone(BUZZER_PIN);
+}
+
+void playEatingAnimation(const uint16_t* foodImage) {
+  display.fillScreen(PET_SCREEN_COLOR);
+  const int petX = 8, petY = 60, foodX = 80, foodY = 60;
+  drawPet(petX, petY);
+  drawSpriteTransparent(foodX, foodY, foodImage, 40, 40);
+  delay(350);
+  for (int i = 1; i <= 3; i++) {
+    tone(BUZZER_PIN, 250 + i * 80, 90);
+    int eatenWidth = (40 * i) / 3;
+    display.fillRect(foodX, foodY, eatenWidth, 40, PET_SCREEN_COLOR);
+    delay(300);
+  }
+  playHappySound();
+}
+
+void drawPlayScreen() {
+  display.fillScreen(BACKGROUND_COLOR);
+  printCentered("PLAY", 26, 2, HEADER_COLOR);
+  int imageX = (display.width() - 40) / 2;
+  display.drawRGBBitmap(imageX, 54, epd_bitmap_virtual_pet_ball, 40, 40);
+  printCentered("Ball", 100, 2, TEXT_COLOR);
+}
+
+void playBallAnimation() {
+  display.fillScreen(PET_SCREEN_COLOR);
+  const int petX = 8, petY = 60, ballX = 80, ballDownY = 60, ballUpY = 30;
+  drawPet(petX, petY);
+  drawSpriteTransparent(ballX, ballDownY, epd_bitmap_virtual_pet_ball, 40, 40);
+  delay(250);
+  const int ballHeights[4] = { ballUpY, ballDownY, ballUpY, ballDownY };
+  for (int i =0; i < 4; i++) {
+    display.fillRect(ballX, 30, 40, 70, PET_SCREEN_COLOR);
+    drawSpriteTransparent(ballX, ballHeights[i], epd_bitmap_virtual_pet_ball, 40, 40);
+    int beepPitch;
+    if (ballHeights[i] == ballUpY) beepPitch = 880;
+    else beepPitch = 440;
+    tone(BUZZER_PIN, beepPitch, 90);
+    delay(180);
+  }
+  playHappySound();
 }
 
 void setup() {
@@ -253,6 +331,13 @@ void loop() {
           playBeep();
           drawStatusScreen();
           currentScreen = STATUS_SCREEN;
+        } else if (selectedMenuItem == 1) {
+          currentScreen = FOOD;
+          selectedFood = 0;
+          drawFoodScreen();
+        } else{
+          currentScreen = PLAY;
+          drawPlayScreen();
         }
       } else if (pressedButton == BACK_BUTTON) {
           playBeep();
@@ -266,6 +351,41 @@ void loop() {
       playBeep();
       drawMenuScreen();
       currentScreen = MENU;
+    }
+    break;
+
+    case FOOD:
+    if (pressedButton == SCROLL_BUTTON) {
+      playBeep();
+      if (selectedFood == FOOD_COUNT - 1) selectedFood = 0;
+      else selectedFood = selectedFood + 1;
+        drawFoodItem();
+    } else if (pressedButton == SELECT_BUTTON) {
+      playSelectSound();
+      hungerLevel = keepBetween0And100(hungerLevel + foodHungerGain[selectedFood]);
+      happinessLevel = keepBetween0And100(happinessLevel + foodHappinessGain[selectedFood]);
+      playEatingAnimation(foodImages[selectedFood]);
+      enterPetScreen();
+      currentScreen == PET;
+    } else if (pressedButton == BACK_BUTTON) {
+        playBeep();
+        drawMenuScreen();
+        currentScreen = MENU;      
+    }
+    break;
+
+    case PLAY:
+    if (pressedButton == SELECT_BUTTON) {
+      playSelectSound();
+      funLevel = keepBetween0And100(funLevel + 15);
+      happinessLevel = keepBetween0And100(happinessLevel + 15);
+      playBallAnimation();
+      enterPetScreen();
+      currentScreen = PET;
+    } else if (pressedButton == BACK_BUTTON) {
+      playBeep();
+      drawMenuScreen();
+      currentScreen = MENU; 
     }
   }
 
